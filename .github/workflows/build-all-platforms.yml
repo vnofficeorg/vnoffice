@@ -43,6 +43,9 @@ jobs:
             libcups2-dev libfontconfig1-dev libunwind-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libgtk-3-dev libkrb5-dev \
+            libxslt1-dev libxml2-dev libxml2-utils \
+            libcurl4-openssl-dev libssl-dev \
+            libnss3-dev libnspr4-dev \
             nasm junit4 ant default-jdk \
             bison flex gperf \
             libxrandr-dev libxrender-dev libxext-dev \
@@ -144,36 +147,36 @@ jobs:
       - name: 📥 Clone LibreOffice source
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d && git clone --depth 1 --branch libreoffice-25-2 https://git.libreoffice.org/core libreoffice-core || git clone --depth 1 https://git.libreoffice.org/core libreoffice-core"
+          C:\cygwin64\bin\bash.exe -lc "cd ~ && git clone --depth 1 --branch libreoffice-25-2 https://git.libreoffice.org/core libreoffice-core || git clone --depth 1 https://git.libreoffice.org/core libreoffice-core"
 
       - name: 📥 Clone translations (Vietnamese)
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
+          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
 
       - name: 🎨 Apply VNOffice branding
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash $(cygpath -u '%GITHUB_WORKSPACE%')/scripts/apply-branding.sh"
+          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash '$(cygpath -u "%GITHUB_WORKSPACE%")/scripts/apply-branding.sh'"
 
       - name: ⚙️ Configure & Build
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && printf '--with-vendor=PH\u1ea0M V\u0102N TH\u01af\u01a0NG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && ./autogen.sh && make 2>&1 | tail -50"
+          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && printf '--with-vendor=PHAM VAN THUONG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && ./autogen.sh && make 2>&1 | tail -50"
 
       - name: 📦 Create Windows Installer (.msi)
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && make distro-pack-install || true && find . -name '*.msi' -o -name '*.exe' | head -20"
+          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && make distro-pack-install || true && find . -name '*.msi' -o -name '*.exe' | head -20"
 
       - name: 📤 Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: vnoffice-windows-installer
           path: |
-            D:\libreoffice-core\workdir\installation\**\*.msi
-            D:\libreoffice-core\workdir\installation\**\*.exe
-            D:\libreoffice-core\instdir\**
+            C:\cygwin64\home\runneradmin\libreoffice-core\workdir\installation\**\*.msi
+            C:\cygwin64\home\runneradmin\libreoffice-core\workdir\installation\**\*.exe
+            C:\cygwin64\home\runneradmin\libreoffice-core\instdir\**
           retention-days: 30
 
   # =========================================================================
@@ -190,7 +193,9 @@ jobs:
 
       - name: 🔧 Install dependencies
         run: |
-          brew install autoconf automake ccache pkg-config \
+          # Uninstall homebrew pkg-config (LibreOffice configure rejects it)
+          brew uninstall --ignore-dependencies pkg-config 2>/dev/null || true
+          brew install autoconf automake ccache \
             gettext gperf nasm ant make
           # Add GNU make to PATH (brew installs as gmake, we need 'make' >= 4.0)
           echo "$(brew --prefix)/opt/make/libexec/gnubin" >> $GITHUB_PATH
