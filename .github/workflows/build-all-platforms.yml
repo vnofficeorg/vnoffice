@@ -18,7 +18,8 @@ env:
   VNOFFICE_VENDOR: "PHẠM VĂN THƯƠNG"
   VNOFFICE_EMAIL: "info@vnoffice.org"
   LIBREOFFICE_BRANCH: "libreoffice-25-2"
-  BUILD_LANGS: "vi en-US"
+  # TODO: Đổi thành "vi en-US" khi build English đã ổn định
+  BUILD_LANGS: "en-US"
 
 jobs:
   # =========================================================================
@@ -69,10 +70,11 @@ jobs:
             https://git.libreoffice.org/core libreoffice-core || \
           git clone --depth 1 https://git.libreoffice.org/core libreoffice-core
 
-      - name: 📥 Clone translations (Vietnamese)
-        run: |
-          cd libreoffice-core
-          git clone --depth 1 https://git.libreoffice.org/translations
+      # TODO: Bật lại khi thêm tiếng Việt (--with-lang="vi en-US")
+      # - name: 📥 Clone translations (Vietnamese)
+      #   run: |
+      #     cd libreoffice-core
+      #     git clone --depth 1 https://git.libreoffice.org/translations
 
       - name: 🎨 Apply VNOffice branding
         run: |
@@ -86,7 +88,7 @@ jobs:
           printf '%s\n' \
             "--with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org" \
             "--with-package-version=${{ env.VNOFFICE_VERSION }}" \
-            "--with-lang=vi en-US" \
+            "--with-lang=${{ env.BUILD_LANGS }}" \
             "--enable-release-build" \
             "--disable-online-update" \
             "--disable-odk" \
@@ -96,21 +98,29 @@ jobs:
             "--enable-epm" \
             "--without-doxygen" \
             "--without-help" \
+            "--without-junit" \
             > autogen.input
           cat autogen.input
           ./autogen.sh
 
       - name: 🔨 Build VNOffice
         run: |
+          set -o pipefail
           cd libreoffice-core
-          make -j$(nproc) 2>&1 | tail -50
+          make -j$(nproc) 2>&1 | tail -500
 
-      - name: 📦 Create .deb package
+      - name: 📦 Verify .deb packages
         run: |
           cd libreoffice-core
-          make distro-pack-deb || true
-          # Tìm file .deb
-          find . -name "*.deb" -type f 2>/dev/null | head -20
+          echo "=== Tìm file .deb ==="
+          find workdir/installation -name "*.deb" -type f 2>/dev/null | head -20
+          echo "=== Kiểm tra instdir ==="
+          ls -lh instdir/ 2>/dev/null | head -20
+          DEB_COUNT=$(find workdir/installation -name "*.deb" -type f 2>/dev/null | wc -l)
+          echo "Tổng số file .deb: $DEB_COUNT"
+          if [ "$DEB_COUNT" -eq 0 ]; then
+            echo "::warning::Không tìm thấy file .deb nào trong workdir/installation/"
+          fi
 
       - name: 📤 Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -122,7 +132,7 @@ jobs:
           retention-days: 30
 
   # =========================================================================
-  # 🪟 BUILD WINDOWS (.exe / .msi) — Giao diện cài đặt tiếng Việt
+  # 🪟 BUILD WINDOWS (.exe / .msi)
   # =========================================================================
   build-windows:
     name: 🪟 Build Windows (.exe)
@@ -150,10 +160,11 @@ jobs:
         run: |
           C:\tools\cygwin\bin\bash.exe -lc "cd ~ && git clone --depth 1 --branch libreoffice-25-2 https://git.libreoffice.org/core libreoffice-core || git clone --depth 1 https://git.libreoffice.org/core libreoffice-core"
 
-      - name: 📥 Clone translations (Vietnamese)
-        shell: cmd
-        run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
+      # TODO: Bật lại khi thêm tiếng Việt (--with-lang="vi en-US")
+      # - name: 📥 Clone translations (Vietnamese)
+      #   shell: cmd
+      #   run: |
+      #     C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
 
       - name: 🎨 Apply VNOffice branding
         shell: cmd
@@ -163,15 +174,20 @@ jobs:
           xcopy "%GITHUB_WORKSPACE%\templates" "C:\tools\cygwin\home\runneradmin\templates\" /E /I /Y >nul 2>&1
           C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && sed -i 's/\r$//' ~/vnoffice-scripts/*.sh && bash ~/vnoffice-scripts/apply-branding.sh"
 
-      - name: ⚙️ Configure & Build
+      - name: ⚙️ Configure
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf -- '--with-vendor=PHAM VAN THUONG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--without-junit\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && cat autogen.input && ./autogen.sh && make 2>&1 | tail -50"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf '%%s\n' '--with-vendor=PHAM VAN THUONG - info@vnoffice.org' '--with-package-version=${{ env.VNOFFICE_VERSION }}' '--with-lang=${{ env.BUILD_LANGS }}' '--enable-release-build' '--disable-online-update' '--disable-odk' '--without-doxygen' '--without-help' '--without-junit' '--with-package-format=msi' '--enable-epm' '--enable-ccache' > autogen.input && cat autogen.input && ./autogen.sh"
 
-      - name: 📦 Create Windows Installer (.msi)
+      - name: 🔨 Build VNOffice
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && make distro-pack-install || true && find . -name '*.msi' -o -name '*.exe' | head -20"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && set -o pipefail && make 2>&1 | tail -500"
+
+      - name: 📦 Verify Windows packages
+        shell: cmd
+        run: |
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && echo '=== Tim file .msi ===' && find workdir/installation -name '*.msi' -o -name '*.exe' 2>/dev/null | head -20 && echo '=== Kiem tra instdir ===' && ls -lh instdir/ 2>/dev/null | head -20"
 
       - name: 📤 Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -184,7 +200,7 @@ jobs:
           retention-days: 30
 
   # =========================================================================
-  # 🍎 BUILD macOS (.dmg) — Giao diện tiếng Việt
+  # 🍎 BUILD macOS (.dmg)
   # =========================================================================
   build-macos:
     name: 🍎 Build macOS (.dmg)
@@ -217,10 +233,11 @@ jobs:
             https://git.libreoffice.org/core libreoffice-core || \
           git clone --depth 1 https://git.libreoffice.org/core libreoffice-core
 
-      - name: 📥 Clone translations (Vietnamese)
-        run: |
-          cd libreoffice-core
-          git clone --depth 1 https://git.libreoffice.org/translations
+      # TODO: Bật lại khi thêm tiếng Việt (--with-lang="vi en-US")
+      # - name: 📥 Clone translations (Vietnamese)
+      #   run: |
+      #     cd libreoffice-core
+      #     git clone --depth 1 https://git.libreoffice.org/translations
 
       - name: 🎨 Apply VNOffice branding
         run: |
@@ -235,7 +252,7 @@ jobs:
           printf '%s\n' \
             "--with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org" \
             "--with-package-version=${{ env.VNOFFICE_VERSION }}" \
-            "--with-lang=vi en-US" \
+            "--with-lang=${{ env.BUILD_LANGS }}" \
             "--enable-release-build" \
             "--disable-online-update" \
             "--disable-odk" \
@@ -249,37 +266,44 @@ jobs:
 
       - name: 🔨 Build VNOffice
         run: |
+          set -o pipefail
           cd libreoffice-core
-          make -j$(sysctl -n hw.ncpu) 2>&1 | tail -50
+          make -j$(sysctl -n hw.ncpu) 2>&1 | tail -500
 
       - name: 📦 Create .dmg
         run: |
           cd libreoffice-core
-          # Tạo DMG với tên VNOffice
-          make mac-app-store-package || true
 
-          # Fallback: tạo DMG thủ công
-          APP=$(find instdir -name "*.app" -maxdepth 1 | head -1)
-          if [ -n "$APP" ]; then
-            # Đổi tên app
-            NEW_APP="instdir/VNOffice.app"
-            mv "$APP" "$NEW_APP" 2>/dev/null || true
-
-            # Sửa Info.plist cho tiếng Việt
-            PLIST="$NEW_APP/Contents/Info.plist"
-            if [ -f "$PLIST" ]; then
-              /usr/libexec/PlistBuddy -c "Set :CFBundleName VNOffice" "$PLIST" 2>/dev/null || true
-              /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName VNOffice" "$PLIST" 2>/dev/null || true
-            fi
-
-            # Tạo DMG
-            hdiutil create -volname "VNOffice" \
-              -srcfolder "$NEW_APP" \
-              -ov -format UDZO \
-              "VNOffice-${{ env.VNOFFICE_VERSION }}-macOS.dmg"
+          # Tìm .app trong instdir
+          APP=$(find instdir -name "*.app" -maxdepth 1 2>/dev/null | head -1)
+          if [ -z "$APP" ]; then
+            echo "::error::Không tìm thấy .app trong instdir/"
+            ls -la instdir/ 2>/dev/null
+            exit 1
           fi
 
+          echo "Found app: $APP"
+
+          # Đổi tên app → VNOffice
+          NEW_APP="instdir/VNOffice.app"
+          mv "$APP" "$NEW_APP"
+
+          # Sửa Info.plist
+          PLIST="$NEW_APP/Contents/Info.plist"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName VNOffice" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName VNOffice" "$PLIST" 2>/dev/null || true
+          fi
+
+          # Tạo DMG
+          hdiutil create -volname "VNOffice" \
+            -srcfolder "$NEW_APP" \
+            -ov -format UDZO \
+            "VNOffice-${{ env.VNOFFICE_VERSION }}-macOS.dmg"
+
+          echo "=== DMG files ==="
           find . -name "*.dmg" | head -5
+          ls -lh *.dmg 2>/dev/null
 
       - name: 📤 Upload macOS artifact
         uses: actions/upload-artifact@v4
