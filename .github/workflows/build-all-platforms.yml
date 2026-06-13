@@ -83,20 +83,21 @@ jobs:
       - name: ⚙️ Configure build
         run: |
           cd libreoffice-core
-          cat > autogen.input << 'EOF'
-          --with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org
-          --with-package-version=${{ env.VNOFFICE_VERSION }}
-          --with-lang=vi en-US
-          --enable-release-build
-          --disable-online-update
-          --disable-odk
-          --with-package-format=deb
-          --with-parallelism=$(nproc)
-          --enable-ccache
-          --enable-epm
-          --without-doxygen
-          --without-help
-          EOF
+          printf '%s\n' \
+            "--with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org" \
+            "--with-package-version=${{ env.VNOFFICE_VERSION }}" \
+            "--with-lang=vi en-US" \
+            "--enable-release-build" \
+            "--disable-online-update" \
+            "--disable-odk" \
+            "--with-package-format=deb" \
+            "--with-parallelism=$(nproc)" \
+            "--enable-ccache" \
+            "--enable-epm" \
+            "--without-doxygen" \
+            "--without-help" \
+            > autogen.input
+          cat autogen.input
           ./autogen.sh
 
       - name: 🔨 Build VNOffice
@@ -228,18 +229,19 @@ jobs:
       - name: ⚙️ Configure build
         run: |
           cd libreoffice-core
-          cat > autogen.input << 'EOF'
-          --with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org
-          --with-package-version=${{ env.VNOFFICE_VERSION }}
-          --with-lang=vi en-US
-          --enable-release-build
-          --disable-online-update
-          --disable-odk
-          --without-doxygen
-          --without-help
-          --without-junit
-          --enable-ccache
-          EOF
+          printf '%s\n' \
+            "--with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org" \
+            "--with-package-version=${{ env.VNOFFICE_VERSION }}" \
+            "--with-lang=vi en-US" \
+            "--enable-release-build" \
+            "--disable-online-update" \
+            "--disable-odk" \
+            "--without-doxygen" \
+            "--without-help" \
+            "--without-junit" \
+            "--enable-ccache" \
+            > autogen.input
+          cat autogen.input
           ./autogen.sh
 
       - name: 🔨 Build VNOffice
