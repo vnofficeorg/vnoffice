@@ -51,7 +51,7 @@ jobs:
             libxrandr-dev libxrender-dev libxext-dev \
             libx11-dev libxt-dev \
             zip unzip wget python3-dev \
-            epm
+            xsltproc epm
           # Set GCC 12 as default
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 120
@@ -140,43 +140,43 @@ jobs:
       - name: 💾 Cache ccache
         uses: actions/cache@v4
         with:
-          path: C:\cygwin64\home\runneradmin\.ccache
+          path: C:\tools\cygwin\home\runneradmin\.ccache
           key: ccache-windows-${{ github.sha }}
           restore-keys: ccache-windows-
 
       - name: 📥 Clone LibreOffice source
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd ~ && git clone --depth 1 --branch libreoffice-25-2 https://git.libreoffice.org/core libreoffice-core || git clone --depth 1 https://git.libreoffice.org/core libreoffice-core"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~ && git clone --depth 1 --branch libreoffice-25-2 https://git.libreoffice.org/core libreoffice-core || git clone --depth 1 https://git.libreoffice.org/core libreoffice-core"
 
       - name: 📥 Clone translations (Vietnamese)
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
 
       - name: 🎨 Apply VNOffice branding
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash '$(cygpath -u "%GITHUB_WORKSPACE%")/scripts/apply-branding.sh'"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash '$(cygpath -u "%GITHUB_WORKSPACE%")/scripts/apply-branding.sh'"
 
       - name: ⚙️ Configure & Build
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && printf '--with-vendor=PHAM VAN THUONG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && ./autogen.sh && make 2>&1 | tail -50"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf '--with-vendor=PHAM VAN THUONG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && ./autogen.sh && make 2>&1 | tail -50"
 
       - name: 📦 Create Windows Installer (.msi)
         shell: cmd
         run: |
-          C:\cygwin64\bin\bash.exe -lc "cd ~/libreoffice-core && make distro-pack-install || true && find . -name '*.msi' -o -name '*.exe' | head -20"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && make distro-pack-install || true && find . -name '*.msi' -o -name '*.exe' | head -20"
 
       - name: 📤 Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: vnoffice-windows-installer
           path: |
-            C:\cygwin64\home\runneradmin\libreoffice-core\workdir\installation\**\*.msi
-            C:\cygwin64\home\runneradmin\libreoffice-core\workdir\installation\**\*.exe
-            C:\cygwin64\home\runneradmin\libreoffice-core\instdir\**
+            C:\tools\cygwin\home\runneradmin\libreoffice-core\workdir\installation\**\*.msi
+            C:\tools\cygwin\home\runneradmin\libreoffice-core\workdir\installation\**\*.exe
+            C:\tools\cygwin\home\runneradmin\libreoffice-core\instdir\**
           retention-days: 30
 
   # =========================================================================
@@ -237,6 +237,7 @@ jobs:
           --disable-odk
           --without-doxygen
           --without-help
+          --without-junit
           --enable-ccache
           EOF
           ./autogen.sh
