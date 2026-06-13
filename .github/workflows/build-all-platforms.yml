@@ -39,7 +39,7 @@ jobs:
           sudo apt-get build-dep -y libreoffice || true
           sudo apt-get install -y \
             git ccache autoconf automake libtool \
-            libcups2-dev libfontconfig1-dev \
+            libcups2-dev libfontconfig1-dev libunwind-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libgtk-3-dev libkrb5-dev \
             nasm junit4 ant default-jdk \
@@ -140,30 +140,29 @@ jobs:
           restore-keys: ccache-windows-
 
       - name: 📥 Clone LibreOffice source
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail '{0}'
+        shell: bash
         run: |
-          cd /cygdrive/d
           git clone --depth 1 --branch libreoffice-25-2 \
             https://git.libreoffice.org/core libreoffice-core || \
           git clone --depth 1 https://git.libreoffice.org/core libreoffice-core
 
       - name: 📥 Clone translations (Vietnamese)
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail '{0}'
+        shell: bash
         run: |
-          cd /cygdrive/d/libreoffice-core
+          cd libreoffice-core
           git clone --depth 1 https://git.libreoffice.org/translations
 
       - name: 🎨 Apply VNOffice branding
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail '{0}'
+        shell: bash
         run: |
-          cd /cygdrive/d/libreoffice-core
+          cd libreoffice-core
           export VNOFFICE_VERSION="${{ env.VNOFFICE_VERSION }}"
-          bash /cygdrive/d/a/vnoffice/vnoffice/scripts/apply-branding.sh
+          bash $GITHUB_WORKSPACE/scripts/apply-branding.sh
 
       - name: ⚙️ Configure & Build
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail '{0}'
+        shell: bash
         run: |
-          cd /cygdrive/d/libreoffice-core
+          cd libreoffice-core
           cat > autogen.input << 'EOF'
           --with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org
           --with-package-version=${{ env.VNOFFICE_VERSION }}
@@ -183,9 +182,9 @@ jobs:
           make 2>&1 | tail -50
 
       - name: 📦 Create Windows Installer (.msi)
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail '{0}'
+        shell: bash
         run: |
-          cd /cygdrive/d/libreoffice-core
+          cd libreoffice-core
           make distro-pack-install || true
           find . -name "*.msi" -o -name "*.exe" | head -20
 
@@ -194,9 +193,9 @@ jobs:
         with:
           name: vnoffice-windows-installer
           path: |
-            D:\libreoffice-core\workdir\installation\**\*.msi
-            D:\libreoffice-core\workdir\installation\**\*.exe
-            D:\libreoffice-core\instdir\**
+            libreoffice-core/workdir/installation/**/*.msi
+            libreoffice-core/workdir/installation/**/*.exe
+            libreoffice-core/instdir/**
           retention-days: 30
 
   # =========================================================================
@@ -244,7 +243,8 @@ jobs:
       - name: ⚙️ Configure build
         run: |
           cd libreoffice-core
-          cat > autogen.input << 'EOF'
+          SDK_PATH=$(xcrun --show-sdk-path)
+          cat > autogen.input << EOF
           --with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org
           --with-package-version=${{ env.VNOFFICE_VERSION }}
           --with-lang=vi en-US
@@ -254,7 +254,7 @@ jobs:
           --without-doxygen
           --without-help
           --enable-ccache
-          --with-macosx-sdk=$(xcrun --show-sdk-path)
+          --with-macosx-sdk-path=$SDK_PATH
           EOF
           ./autogen.sh
 
