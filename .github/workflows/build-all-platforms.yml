@@ -161,7 +161,7 @@ jobs:
           xcopy "%GITHUB_WORKSPACE%\scripts" "C:\tools\cygwin\home\runneradmin\vnoffice-scripts\" /E /I /Y
           xcopy "%GITHUB_WORKSPACE%\branding" "C:\tools\cygwin\home\runneradmin\branding\" /E /I /Y >nul 2>&1
           xcopy "%GITHUB_WORKSPACE%\templates" "C:\tools\cygwin\home\runneradmin\templates\" /E /I /Y >nul 2>&1
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash ~/vnoffice-scripts/apply-branding.sh"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && sed -i 's/\r$//' ~/vnoffice-scripts/*.sh && bash ~/vnoffice-scripts/apply-branding.sh"
 
       - name: ⚙️ Configure & Build
         shell: cmd
