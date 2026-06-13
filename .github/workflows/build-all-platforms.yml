@@ -26,7 +26,7 @@ jobs:
   # =========================================================================
   build-linux:
     name: 🐧 Build Linux (.deb)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
 
     steps:
@@ -39,6 +39,7 @@ jobs:
           sudo apt-get build-dep -y libreoffice || true
           sudo apt-get install -y \
             git ccache autoconf automake libtool \
+            gcc-12 g++-12 \
             libcups2-dev libfontconfig1-dev libunwind-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libgtk-3-dev libkrb5-dev \
@@ -47,6 +48,9 @@ jobs:
             libxrandr-dev libxrender-dev libxext-dev \
             libx11-dev libxt-dev \
             zip unzip wget python3-dev
+          # Set GCC 12 as default
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 120
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
@@ -140,29 +144,30 @@ jobs:
           restore-keys: ccache-windows-
 
       - name: 📥 Clone LibreOffice source
-        shell: bash
+        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
         run: |
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
           git clone --depth 1 --branch libreoffice-25-2 \
             https://git.libreoffice.org/core libreoffice-core || \
           git clone --depth 1 https://git.libreoffice.org/core libreoffice-core
 
       - name: 📥 Clone translations (Vietnamese)
-        shell: bash
+        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
         run: |
-          cd libreoffice-core
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
           git clone --depth 1 https://git.libreoffice.org/translations
 
       - name: 🎨 Apply VNOffice branding
-        shell: bash
+        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
         run: |
-          cd libreoffice-core
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
           export VNOFFICE_VERSION="${{ env.VNOFFICE_VERSION }}"
-          bash $GITHUB_WORKSPACE/scripts/apply-branding.sh
+          bash "$(cygpath -u "$GITHUB_WORKSPACE")/scripts/apply-branding.sh"
 
       - name: ⚙️ Configure & Build
-        shell: bash
+        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
         run: |
-          cd libreoffice-core
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
           cat > autogen.input << 'EOF'
           --with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org
           --with-package-version=${{ env.VNOFFICE_VERSION }}
@@ -182,9 +187,9 @@ jobs:
           make 2>&1 | tail -50
 
       - name: 📦 Create Windows Installer (.msi)
-        shell: bash
+        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
         run: |
-          cd libreoffice-core
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
           make distro-pack-install || true
           find . -name "*.msi" -o -name "*.exe" | head -20
 
@@ -243,8 +248,7 @@ jobs:
       - name: ⚙️ Configure build
         run: |
           cd libreoffice-core
-          SDK_PATH=$(xcrun --show-sdk-path)
-          cat > autogen.input << EOF
+          cat > autogen.input << 'EOF'
           --with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org
           --with-package-version=${{ env.VNOFFICE_VERSION }}
           --with-lang=vi en-US
@@ -254,7 +258,6 @@ jobs:
           --without-doxygen
           --without-help
           --enable-ccache
-          --with-macosx-sdk-path=$SDK_PATH
           EOF
           ./autogen.sh
 
