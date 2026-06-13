@@ -51,7 +51,7 @@ jobs:
             libxrandr-dev libxrender-dev libxext-dev \
             libx11-dev libxt-dev \
             zip unzip wget python3-dev \
-            xsltproc epm
+            xsltproc epm gettext
           # Set GCC 12 as default
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 120
@@ -158,7 +158,10 @@ jobs:
       - name: 🎨 Apply VNOffice branding
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash '$(cygpath -u "%GITHUB_WORKSPACE%")/scripts/apply-branding.sh'"
+          xcopy "%GITHUB_WORKSPACE%\scripts" "C:\tools\cygwin\home\runneradmin\vnoffice-scripts\" /E /I /Y
+          xcopy "%GITHUB_WORKSPACE%\branding" "C:\tools\cygwin\home\runneradmin\branding\" /E /I /Y >nul 2>&1
+          xcopy "%GITHUB_WORKSPACE%\templates" "C:\tools\cygwin\home\runneradmin\templates\" /E /I /Y >nul 2>&1
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash ~/vnoffice-scripts/apply-branding.sh"
 
       - name: ⚙️ Configure & Build
         shell: cmd
