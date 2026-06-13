@@ -136,7 +136,7 @@ jobs:
       - name: 🔧 Setup Cygwin
         uses: egor-tensin/setup-cygwin@v4
         with:
-          packages: autoconf automake bison flex gcc-g++ git gnupg gperf make openssh perl pkg-config python3 wget zip unzip patch ccache
+          packages: autoconf automake bison flex gcc-g++ git gnupg gperf make openssh perl pkg-config python3 wget zip unzip patch ccache gettext-devel libtool
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
@@ -166,7 +166,7 @@ jobs:
       - name: ⚙️ Configure & Build
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf '--with-vendor=PHAM VAN THUONG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && ./autogen.sh && make 2>&1 | tail -50"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf -- '--with-vendor=PHAM VAN THUONG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--without-junit\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && cat autogen.input && ./autogen.sh && make 2>&1 | tail -50"
 
       - name: 📦 Create Windows Installer (.msi)
         shell: cmd
