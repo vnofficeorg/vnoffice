@@ -1,0 +1,303 @@
+# =============================================================================
+# VNOffice — Build All Platforms (Windows .exe, macOS .dmg, Linux .deb)
+# =============================================================================
+# Dựa trên LibreOffice (MPL 2.0) — Miễn phí cho cá nhân và doanh nghiệp
+# Build tự động bằng GitHub Actions cho cả 3 hệ điều hành
+# =============================================================================
+
+name: Build VNOffice
+
+on:
+  push:
+    tags:
+      - 'v*'  # Chỉ build khi tạo tag release (v1.0.0, v1.1.0, ...)
+  workflow_dispatch:  # Cho phép chạy thủ công
+
+env:
+  VNOFFICE_VERSION: "1.0.0"
+  VNOFFICE_VENDOR: "VNOffice Community"
+  LIBREOFFICE_BRANCH: "libreoffice-25-2"  # Branch stable mới nhất
+  BUILD_LANGS: "vi en-US"
+
+jobs:
+  # =========================================================================
+  # 🐧 BUILD LINUX (.deb)
+  # =========================================================================
+  build-linux:
+    name: 🐧 Build Linux (.deb)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360  # 6 giờ max
+
+    steps:
+      - name: 📥 Checkout VNOffice config
+        uses: actions/checkout@v4
+
+      - name: 🔧 Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get build-dep -y libreoffice
+          sudo apt-get install -y \
+            git ccache autoconf automake \
+            libcups2-dev libfontconfig1-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            nasm junit4 ant default-jdk
+
+      - name: 💾 Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-linux-${{ github.sha }}
+          restore-keys: ccache-linux-
+
+      - name: 📥 Clone LibreOffice source
+        run: |
+          git clone --depth 1 --branch ${{ env.LIBREOFFICE_BRANCH }} \
+            https://git.libreoffice.org/core libreoffice-core
+          cd libreoffice-core
+          git clone --depth 1 https://git.libreoffice.org/translations
+
+      - name: 🎨 Apply VNOffice branding
+        run: |
+          cd libreoffice-core
+          # Áp dụng các thay đổi branding từ thư mục patches/
+          bash $GITHUB_WORKSPACE/scripts/apply-branding.sh
+
+      - name: ⚙️ Configure build
+        run: |
+          cd libreoffice-core
+          cat > autogen.input << EOF
+          --with-vendor=${{ env.VNOFFICE_VENDOR }}
+          --with-package-version=${{ env.VNOFFICE_VERSION }}
+          --with-lang=${{ env.BUILD_LANGS }}
+          --enable-release-build
+          --disable-online-update
+          --disable-odk
+          --with-package-format=deb
+          --with-parallelism=$(nproc)
+          --enable-ccache
+          EOF
+          ./autogen.sh
+
+      - name: 🔨 Build VNOffice
+        run: |
+          cd libreoffice-core
+          make -j$(nproc)
+
+      - name: 📦 Create .deb package
+        run: |
+          cd libreoffice-core
+          make distro-pack-deb
+
+      - name: 📤 Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnoffice-linux-deb
+          path: libreoffice-core/workdir/installation/**/deb/*.deb
+          retention-days: 30
+
+  # =========================================================================
+  # 🪟 BUILD WINDOWS (.exe / .msi)
+  # =========================================================================
+  build-windows:
+    name: 🪟 Build Windows (.exe)
+    runs-on: windows-2022
+    timeout-minutes: 480  # 8 giờ max (Windows build chậm hơn)
+
+    steps:
+      - name: 📥 Checkout VNOffice config
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Visual Studio environment
+        uses: microsoft/setup-msbuild@v2
+
+      - name: 🔧 Install Cygwin
+        uses: cygwin/cygwin-install-action@v4
+        with:
+          packages: >-
+            autoconf automake bison flex gcc-g++ git gnupg gperf
+            make mingw64-x86_64-headers openssh perl pkg-config
+            python3 wget zip unzip
+
+      - name: 💾 Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: C:\Users\runneradmin\.ccache
+          key: ccache-windows-${{ github.sha }}
+          restore-keys: ccache-windows-
+
+      - name: 📥 Clone LibreOffice source
+        shell: C:\cygwin\bin\bash.exe --login -eo pipefail '{0}'
+        run: |
+          cd /cygdrive/d
+          git clone --depth 1 --branch $LIBREOFFICE_BRANCH \
+            https://git.libreoffice.org/core libreoffice-core
+          cd libreoffice-core
+          git clone --depth 1 https://git.libreoffice.org/translations
+
+      - name: 🎨 Apply VNOffice branding
+        shell: C:\cygwin\bin\bash.exe --login -eo pipefail '{0}'
+        run: |
+          cd /cygdrive/d/libreoffice-core
+          bash /cygdrive/d/a/vnoffice/vnoffice/scripts/apply-branding.sh
+
+      - name: ⚙️ Configure & Build
+        shell: C:\cygwin\bin\bash.exe --login -eo pipefail '{0}'
+        run: |
+          cd /cygdrive/d/libreoffice-core
+          cat > autogen.input << EOF
+          --with-vendor=VNOffice Community
+          --with-package-version=$VNOFFICE_VERSION
+          --with-lang=vi en-US
+          --enable-release-build
+          --disable-online-update
+          --disable-odk
+          --with-package-format=msi
+          --enable-ccache
+          EOF
+          ./autogen.sh
+          make
+
+      - name: 📦 Create installer
+        shell: C:\cygwin\bin\bash.exe --login -eo pipefail '{0}'
+        run: |
+          cd /cygdrive/d/libreoffice-core
+          make distro-pack-install
+
+      - name: 📤 Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnoffice-windows-installer
+          path: D:\libreoffice-core\workdir\installation\**\*.msi
+          retention-days: 30
+
+  # =========================================================================
+  # 🍎 BUILD macOS (.dmg)
+  # =========================================================================
+  build-macos:
+    name: 🍎 Build macOS (.dmg)
+    runs-on: macos-14  # Apple Silicon (M1)
+    timeout-minutes: 480
+
+    steps:
+      - name: 📥 Checkout VNOffice config
+        uses: actions/checkout@v4
+
+      - name: 🔧 Install dependencies
+        run: |
+          brew install autoconf automake ccache pkg-config \
+            gettext gperf nasm
+
+      - name: 💾 Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+
+      - name: 📥 Clone LibreOffice source
+        run: |
+          git clone --depth 1 --branch ${{ env.LIBREOFFICE_BRANCH }} \
+            https://git.libreoffice.org/core libreoffice-core
+          cd libreoffice-core
+          git clone --depth 1 https://git.libreoffice.org/translations
+
+      - name: 🎨 Apply VNOffice branding
+        run: |
+          cd libreoffice-core
+          bash $GITHUB_WORKSPACE/scripts/apply-branding.sh
+
+      - name: ⚙️ Configure build
+        run: |
+          cd libreoffice-core
+          cat > autogen.input << EOF
+          --with-vendor=${{ env.VNOFFICE_VENDOR }}
+          --with-package-version=${{ env.VNOFFICE_VERSION }}
+          --with-lang=${{ env.BUILD_LANGS }}
+          --enable-release-build
+          --disable-online-update
+          --disable-odk
+          --enable-ccache
+          --with-macosx-sdk=$(xcrun --show-sdk-path)
+          EOF
+          ./autogen.sh
+
+      - name: 🔨 Build VNOffice
+        run: |
+          cd libreoffice-core
+          make -j$(sysctl -n hw.ncpu)
+
+      - name: 📦 Create .dmg
+        run: |
+          cd libreoffice-core
+          make mac-app-store-package || true
+          # Fallback: tạo DMG thủ công
+          if [ ! -f *.dmg ]; then
+            APP_NAME="VNOffice.app"
+            cp -r instdir/VNOffice.app /tmp/$APP_NAME 2>/dev/null || \
+            cp -r instdir/*.app /tmp/$APP_NAME
+            hdiutil create -volname "VNOffice" \
+              -srcfolder /tmp/$APP_NAME \
+              -ov -format UDZO \
+              VNOffice-${{ env.VNOFFICE_VERSION }}.dmg
+          fi
+
+      - name: 📤 Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnoffice-macos-dmg
+          path: |
+            libreoffice-core/*.dmg
+            libreoffice-core/workdir/installation/**/*.dmg
+          retention-days: 30
+
+  # =========================================================================
+  # 🚀 CREATE RELEASE
+  # =========================================================================
+  release:
+    name: 🚀 Create GitHub Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+
+      - name: 🚀 Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "VNOffice ${{ github.ref_name }}"
+          body: |
+            ## 🇻🇳 VNOffice ${{ github.ref_name }}
+
+            Bộ phần mềm văn phòng **miễn phí** cho cá nhân và doanh nghiệp.
+            Dựa trên LibreOffice (MPL 2.0) — Không lo bản quyền!
+
+            ### 📦 Tải về:
+            - 🪟 **Windows**: VNOffice-Setup.msi
+            - 🍎 **macOS**: VNOffice.dmg
+            - 🐧 **Linux**: vnoffice.deb
+
+            ### ✨ Bao gồm:
+            - 📝 VNOffice Writer (thay Word)
+            - 📊 VNOffice Calc (thay Excel)
+            - 🎬 VNOffice Impress (thay PowerPoint)
+            - 🖼️ VNOffice Draw (thay Visio)
+            - 🗄️ VNOffice Base (thay Access)
+            - 🔢 VNOffice Math (thay Equation Editor)
+
+            ### 🇻🇳 Tính năng Việt Nam:
+            - Giao diện tiếng Việt
+            - Font tiếng Việt có sẵn
+            - Templates công văn, hợp đồng, bảng lương VN
+            - Cấu hình mặc định chuẩn VN (A4, lề, ngày tháng)
+
+            ### 📞 Liên hệ:
+            - **Chủ sở hữu**: PHẠM VĂN THƯƠNG
+            - **Email**: info@vnoffice.org
+            - **Website**: https://vnoffice.org
+          files: release-artifacts/**/*
+          draft: false
+          prerelease: false

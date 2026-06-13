@@ -1,0 +1,17 @@
+# Ignore LibreOffice source (too large for git)
+libreoffice-core/
+
+# Build output
+build/
+out/
+workdir/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

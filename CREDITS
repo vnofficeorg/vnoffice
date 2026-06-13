@@ -1,0 +1,26 @@
+VNOffice — Free Office Suite for Everyone
+==========================================
+
+VNOffice is a free, open-source office suite based on LibreOffice.
+It is free for personal and enterprise use with no license restrictions.
+
+Owner:   PHẠM VĂN THƯƠNG
+Email:   info@vnoffice.org
+Website: https://vnoffice.org
+
+This software is based on LibreOffice by The Document Foundation.
+LibreOffice is licensed under the Mozilla Public License 2.0 (MPL 2.0)
+and the GNU Lesser General Public License v3 (LGPLv3).
+
+We gratefully acknowledge the work of The Document Foundation and
+all LibreOffice contributors.
+
+VNOffice modifications include:
+- Rebranding (name, logo, splash screen, icons)
+- Vietnamese language as default
+- Vietnamese document templates
+- Vietnamese default settings (A4 paper, margins, date format)
+- Additional Vietnamese fonts
+
+For the full license text, see the LICENSE file.
+For LibreOffice source code: https://www.libreoffice.org/
