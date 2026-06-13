@@ -47,7 +47,8 @@ jobs:
             bison flex gperf \
             libxrandr-dev libxrender-dev libxext-dev \
             libx11-dev libxt-dev \
-            zip unzip wget python3-dev
+            zip unzip wget python3-dev \
+            epm
           # Set GCC 12 as default
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 120
@@ -89,6 +90,7 @@ jobs:
           --with-package-format=deb
           --with-parallelism=$(nproc)
           --enable-ccache
+          --enable-epm
           --without-doxygen
           --without-help
           EOF
@@ -127,14 +129,10 @@ jobs:
       - name: 📥 Checkout VNOffice config
         uses: actions/checkout@v4
 
-      - name: 🔧 Setup Build Environment
-        shell: cmd
-        run: |
-          REM Install Chocolatey packages
-          choco install -y cygwin cyg-get
-          cyg-get autoconf automake bison flex gcc-g++ git gnupg gperf ^
-            make openssh perl pkg-config python3 wget zip unzip ^
-            mingw64-x86_64-headers patch
+      - name: 🔧 Setup Cygwin
+        uses: egor-tensin/setup-cygwin@v4
+        with:
+          packages: autoconf automake bison flex gcc-g++ git gnupg gperf make openssh perl pkg-config python3 wget zip unzip patch ccache
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
@@ -144,63 +142,38 @@ jobs:
           restore-keys: ccache-windows-
 
       - name: 📥 Clone LibreOffice source
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
+        shell: cmd
         run: |
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
-          git clone --depth 1 --branch libreoffice-25-2 \
-            https://git.libreoffice.org/core libreoffice-core || \
-          git clone --depth 1 https://git.libreoffice.org/core libreoffice-core
+          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d && git clone --depth 1 --branch libreoffice-25-2 https://git.libreoffice.org/core libreoffice-core || git clone --depth 1 https://git.libreoffice.org/core libreoffice-core"
 
       - name: 📥 Clone translations (Vietnamese)
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
+        shell: cmd
         run: |
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
-          git clone --depth 1 https://git.libreoffice.org/translations
+          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
 
       - name: 🎨 Apply VNOffice branding
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
+        shell: cmd
         run: |
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
-          export VNOFFICE_VERSION="${{ env.VNOFFICE_VERSION }}"
-          bash "$(cygpath -u "$GITHUB_WORKSPACE")/scripts/apply-branding.sh"
+          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && bash $(cygpath -u '%GITHUB_WORKSPACE%')/scripts/apply-branding.sh"
 
       - name: ⚙️ Configure & Build
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
+        shell: cmd
         run: |
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
-          cat > autogen.input << 'EOF'
-          --with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org
-          --with-package-version=${{ env.VNOFFICE_VERSION }}
-          --with-lang=vi en-US
-          --enable-release-build
-          --disable-online-update
-          --disable-odk
-          --without-doxygen
-          --without-help
-          --with-package-format=msi
-          --enable-ccache
-          EOF
-
-          # Cấu hình installer tiếng Việt
-          # MSI installer sẽ tự động dùng ngôn ngữ đầu tiên (vi)
-          ./autogen.sh
-          make 2>&1 | tail -50
+          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && printf '--with-vendor=PH\u1ea0M V\u0102N TH\u01af\u01a0NG - info@vnoffice.org\n--with-package-version=${{ env.VNOFFICE_VERSION }}\n--with-lang=vi en-US\n--enable-release-build\n--disable-online-update\n--disable-odk\n--without-doxygen\n--without-help\n--with-package-format=msi\n--enable-epm\n--enable-ccache\n' > autogen.input && ./autogen.sh && make 2>&1 | tail -50"
 
       - name: 📦 Create Windows Installer (.msi)
-        shell: C:\cygwin64\bin\bash.exe --login -eo pipefail {0}
+        shell: cmd
         run: |
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")/libreoffice-core"
-          make distro-pack-install || true
-          find . -name "*.msi" -o -name "*.exe" | head -20
+          C:\cygwin64\bin\bash.exe -lc "cd /cygdrive/d/libreoffice-core && make distro-pack-install || true && find . -name '*.msi' -o -name '*.exe' | head -20"
 
       - name: 📤 Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: vnoffice-windows-installer
           path: |
-            libreoffice-core/workdir/installation/**/*.msi
-            libreoffice-core/workdir/installation/**/*.exe
-            libreoffice-core/instdir/**
+            D:\libreoffice-core\workdir\installation\**\*.msi
+            D:\libreoffice-core\workdir\installation\**\*.exe
+            D:\libreoffice-core\instdir\**
           retention-days: 30
 
   # =========================================================================
@@ -218,7 +191,9 @@ jobs:
       - name: 🔧 Install dependencies
         run: |
           brew install autoconf automake ccache pkg-config \
-            gettext gperf nasm ant
+            gettext gperf nasm ant make
+          # Add GNU make to PATH (brew installs as gmake, we need 'make' >= 4.0)
+          echo "$(brew --prefix)/opt/make/libexec/gnubin" >> $GITHUB_PATH
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
