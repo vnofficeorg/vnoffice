@@ -14,7 +14,7 @@ on:
   workflow_dispatch:  # Cho phép chạy thủ công
 
 env:
-  VNOFFICE_VERSION: "1.0.0"
+  VNOFFICE_VERSION: "1.0.0.1"
   VNOFFICE_VENDOR: "PHẠM VĂN THƯƠNG"
   VNOFFICE_EMAIL: "info@vnoffice.org"
   LIBREOFFICE_BRANCH: "libreoffice-25-2"
@@ -34,6 +34,12 @@ jobs:
       - name: 📥 Checkout VNOffice config
         uses: actions/checkout@v4
 
+      - name: ☕ Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
       - name: 🔧 Install build dependencies
         run: |
           sudo apt-get update
@@ -47,7 +53,7 @@ jobs:
             libxslt1-dev libxml2-dev libxml2-utils \
             libcurl4-openssl-dev libssl-dev \
             libnss3-dev libnspr4-dev \
-            nasm junit4 ant default-jdk \
+            nasm junit4 ant \
             bison flex gperf \
             libxrandr-dev libxrender-dev libxext-dev \
             libx11-dev libxt-dev \
@@ -56,6 +62,8 @@ jobs:
           # Set GCC 12 as default
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 120
+          # Verify Java version
+          echo "Java version:" && java -version
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
@@ -148,6 +156,24 @@ jobs:
         with:
           packages: autoconf automake bison flex gcc-g++ git gnupg gperf make openssh perl pkg-config python3 wget zip unzip patch ccache gettext-devel libtool
 
+      - name: 🔧 Export Visual Studio environment for Cygwin
+        shell: cmd
+        run: |
+          @echo off
+          :: Detect VS2022 installation path
+          for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
+          echo Found Visual Studio at: %VS_PATH%
+          :: Call vcvars64.bat and export env vars to a file Cygwin can source
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+          :: Write key env vars to a file
+          echo VS_PATH=%VS_PATH%> %GITHUB_ENV%
+          echo INCLUDE=%INCLUDE%>> %GITHUB_ENV%
+          echo LIB=%LIB%>> %GITHUB_ENV%
+          echo LIBPATH=%LIBPATH%>> %GITHUB_ENV%
+          :: Also add cl.exe to PATH
+          for /f "delims=" %%p in ('where cl.exe') do set CL_DIR=%%~dpp
+          echo CL_DIR=%CL_DIR%>> %GITHUB_ENV%
+
       - name: 💾 Cache ccache
         uses: actions/cache@v4
         with:
@@ -177,11 +203,19 @@ jobs:
       - name: ⚙️ Configure
         shell: cmd
         run: |
+          @echo off
+          :: Re-initialize VS environment in this step
+          for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+          :: Run configure inside Cygwin with VS env inherited
           C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && { echo '--with-vendor=PHAM VAN THUONG - info@vnoffice.org'; echo '--with-package-version=${{ env.VNOFFICE_VERSION }}'; echo '--with-lang=${{ env.BUILD_LANGS }}'; echo '--enable-release-build'; echo '--disable-online-update'; echo '--disable-odk'; echo '--without-doxygen'; echo '--without-help'; echo '--without-junit'; echo '--with-package-format=msi'; echo '--enable-epm'; echo '--enable-ccache'; } > autogen.input && cat autogen.input && ./autogen.sh"
 
       - name: 🔨 Build VNOffice
         shell: cmd
         run: |
+          @echo off
+          for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
           C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && make 2>&1 | tail -500"
 
       - name: 📦 Verify Windows packages
@@ -211,6 +245,12 @@ jobs:
       - name: 📥 Checkout VNOffice config
         uses: actions/checkout@v4
 
+      - name: ☕ Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
       - name: 🔧 Install dependencies
         run: |
           # Uninstall homebrew pkg-config (LibreOffice configure rejects it)
@@ -219,6 +259,8 @@ jobs:
             gettext gperf nasm ant make
           # Add GNU make to PATH (brew installs as gmake, we need 'make' >= 4.0)
           echo "$(brew --prefix)/opt/make/libexec/gnubin" >> $GITHUB_PATH
+          # Verify Java version
+          echo "Java version:" && java -version
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
