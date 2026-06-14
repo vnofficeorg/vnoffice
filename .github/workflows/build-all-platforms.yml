@@ -40,8 +40,8 @@ jobs:
         with:
           packages: >-
             autoconf automake bison flex gcc-g++ git gnupg gperf
-            make openssh perl pkg-config python3 wget zip unzip
-            patch ccache gettext-devel libtool
+            make openssh perl perl-Font-TTF pkg-config python3 wget zip unzip
+            patch ccache gettext-devel libtool nasm
 
       # ---------------------------------------------------------------
       # Inject VS paths vào Cygwin ~/.bash_profile
@@ -96,25 +96,25 @@ jobs:
           echo cl.exe cygpath: %CL_CYG%
           echo VS cygpath: %VS_CYG%
 
-          :: Ghi tất cả vào 1 file tạm trước, rồi append vào bash_profile
-          :: QUAN TRỌNG: LibreOffice configure cần VSINSTALLDIR + VCINSTALLDIR
-          :: không chỉ PATH. Nếu thiếu sẽ báo "no Visual Studio installation found"
-          (
-            echo.
-            echo # === Visual Studio environment ^(auto-generated^) ===
-            echo export PATH="%CL_CYG%:$PATH"
-            echo export INCLUDE="%INCLUDE%"
-            echo export LIB="%LIB%"
-            echo export LIBPATH="%LIBPATH%"
-            echo export VSINSTALLDIR="%VS_PATH%\\"
-            echo export VCINSTALLDIR="%VS_PATH%\VC\\"
-            echo export WindowsSdkDir="%WindowsSdkDir%"
-            echo export WindowsSdkVerBinPath="%WindowsSdkVerBinPath%"
-            echo # === End VS environment ===
-          ) > C:\tools\cygwin\tmp\vs_env.sh
+          :: Ghi VS env vào file tạm
+          :: QUAN TRỌNG: Dùng cmd echo trực tiếp vào Cygwin path
+          :: Escape ^( và ^) cho paths chứa "Program Files (x86)"
+          set VS_ENV_FILE=C:\tools\cygwin\tmp\vs_env.sh
+          echo # === Visual Studio environment === > "%VS_ENV_FILE%"
+          echo export PATH="%CL_CYG%:$PATH" >> "%VS_ENV_FILE%"
+          echo export INCLUDE="%INCLUDE%" >> "%VS_ENV_FILE%"
+          echo export LIB="%LIB%" >> "%VS_ENV_FILE%"
+          echo export LIBPATH="%LIBPATH%" >> "%VS_ENV_FILE%"
+          echo export VSINSTALLDIR="%VS_PATH%\" >> "%VS_ENV_FILE%"
+          echo export VCINSTALLDIR="%VS_PATH%\VC\" >> "%VS_ENV_FILE%"
+          echo export WindowsSdkDir="%WindowsSdkDir%" >> "%VS_ENV_FILE%"
+          echo export WindowsSdkVerBinPath="%WindowsSdkVerBinPath%" >> "%VS_ENV_FILE%"
+          echo # === End VS environment === >> "%VS_ENV_FILE%"
 
-          :: Dùng bash để append (xử lý line endings)
-          C:\tools\cygwin\bin\bash.exe --login -c "sed -i 's/\r$//' /tmp/vs_env.sh && cat /tmp/vs_env.sh >> ~/.bash_profile"
+          :: Fix line endings + wrap values in single quotes + append to bash_profile
+          :: Dùng Python script từ repo (tránh escaping hell)
+          copy "%GITHUB_WORKSPACE%\scripts\fix_vs_env.py" "C:\tools\cygwin\tmp\fix_vs_env.py"
+          C:\tools\cygwin\bin\bash.exe --login -c "python3 /tmp/fix_vs_env.py"
 
           echo === bash_profile contents ===
           C:\tools\cygwin\bin\bash.exe --login -c "cat ~/.bash_profile"
