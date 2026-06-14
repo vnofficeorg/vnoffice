@@ -56,6 +56,19 @@ jobs:
         shell: cmd
         run: |
           @echo off
+
+          :: ============================================================
+          :: BƯỚC 0: Khởi tạo Cygwin home directory
+          :: Khi Cygwin mới cài, /home/runneradmin/ chưa tồn tại.
+          :: bash --login lần đầu sẽ tạo home dir + default dotfiles.
+          :: ============================================================
+          echo === Initializing Cygwin home directory ===
+          C:\tools\cygwin\bin\bash.exe --login -c "whoami && echo HOME=$HOME && ls -la ~/"
+          C:\tools\cygwin\bin\bash.exe --login -c "touch ~/.bash_profile && echo '.bash_profile ready'"
+
+          :: ============================================================
+          :: BƯỚC 1: Tìm Visual Studio và lấy env vars
+          :: ============================================================
           for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
           echo Found Visual Studio at: %VS_PATH%
           call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
@@ -68,20 +81,34 @@ jobs:
           :: Lấy thư mục chứa cl.exe
           for /f "delims=" %%p in ('where cl.exe') do set CL_FULL_PATH=%%p
           for %%d in ("%CL_FULL_PATH%") do set CL_DIR=%%~dpd
+          echo cl.exe directory: %CL_DIR%
 
-          :: Ghi VS paths vào Cygwin ~/.bash_profile
-          :: Dùng cygpath để convert Windows → Cygwin path
+          :: ============================================================
+          :: BƯỚC 2: Ghi VS env vào ~/.bash_profile bằng cách an toàn
+          :: Dùng heredoc thay vì nhiều lần gọi bash riêng lẻ
+          :: ============================================================
           echo === Writing VS env to ~/.bash_profile ===
-          C:\tools\cygwin\bin\bash.exe -c "echo '' >> ~/.bash_profile"
-          C:\tools\cygwin\bin\bash.exe -c "echo '# === Visual Studio environment (auto-generated) ===' >> ~/.bash_profile"
-          C:\tools\cygwin\bin\bash.exe -c "CL_CYG=$(cygpath -u '%CL_DIR%'); echo \"export PATH=\\\"${CL_CYG}:\\\$PATH\\\"\" >> ~/.bash_profile"
-          C:\tools\cygwin\bin\bash.exe -c "echo 'export INCLUDE=\"%INCLUDE%\"' >> ~/.bash_profile"
-          C:\tools\cygwin\bin\bash.exe -c "echo 'export LIB=\"%LIB%\"' >> ~/.bash_profile"
-          C:\tools\cygwin\bin\bash.exe -c "echo 'export LIBPATH=\"%LIBPATH%\"' >> ~/.bash_profile"
-          C:\tools\cygwin\bin\bash.exe -c "echo '# === End VS environment ===' >> ~/.bash_profile"
+
+          :: Chuyển Windows path sang Cygwin path cho CL_DIR
+          for /f "delims=" %%c in ('C:\tools\cygwin\bin\cygpath.exe -u "%CL_DIR%"') do set CL_CYG=%%c
+          echo cl.exe cygpath: %CL_CYG%
+
+          :: Ghi tất cả vào 1 file tạm trước, rồi append vào bash_profile
+          (
+            echo.
+            echo # === Visual Studio environment ^(auto-generated^) ===
+            echo export PATH="%CL_CYG%:$PATH"
+            echo export INCLUDE="%INCLUDE%"
+            echo export LIB="%LIB%"
+            echo export LIBPATH="%LIBPATH%"
+            echo # === End VS environment ===
+          ) > C:\tools\cygwin\tmp\vs_env.sh
+
+          :: Dùng bash để append (xử lý line endings)
+          C:\tools\cygwin\bin\bash.exe --login -c "sed -i 's/\r$//' /tmp/vs_env.sh && cat /tmp/vs_env.sh >> ~/.bash_profile"
 
           echo === bash_profile contents ===
-          C:\tools\cygwin\bin\bash.exe -c "cat ~/.bash_profile"
+          C:\tools\cygwin\bin\bash.exe --login -c "cat ~/.bash_profile"
 
       - name: 🔧 Verify cl.exe available in Cygwin login shell
         shell: cmd
