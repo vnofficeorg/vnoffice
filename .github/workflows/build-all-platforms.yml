@@ -1,8 +1,11 @@
 # =============================================================================
-# VNOffice — Build All Platforms (Windows .exe, macOS .dmg, Linux .deb)
+# VNOffice — Build All Platforms (Windows .exe/.msi, macOS .dmg)
 # =============================================================================
 # Owner:   PHẠM VĂN THƯƠNG (info@vnoffice.org)
 # License: MPL 2.0 (based on LibreOffice)
+#
+# Note: Linux build bị tắt tạm thời do lỗi deb version format.
+#       Chỉ build Windows + macOS.
 # =============================================================================
 
 name: Build VNOffice
@@ -14,131 +17,13 @@ on:
   workflow_dispatch:  # Cho phép chạy thủ công
 
 env:
-  VNOFFICE_VERSION: "1.0.0.1"
+  VNOFFICE_VERSION: "1.0.0"
   VNOFFICE_VENDOR: "PHẠM VĂN THƯƠNG"
   VNOFFICE_EMAIL: "info@vnoffice.org"
   LIBREOFFICE_BRANCH: "libreoffice-25-2"
-  # TODO: Đổi thành "vi en-US" khi build English đã ổn định
   BUILD_LANGS: "en-US"
 
 jobs:
-  # =========================================================================
-  # 🐧 BUILD LINUX (.deb)
-  # =========================================================================
-  build-linux:
-    name: 🐧 Build Linux (.deb)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 360
-
-    steps:
-      - name: 📥 Checkout VNOffice config
-        uses: actions/checkout@v4
-
-      - name: ☕ Setup Java 21 LTS
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: 🔧 Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get build-dep -y libreoffice || true
-          sudo apt-get install -y \
-            git ccache autoconf automake libtool \
-            gcc-12 g++-12 \
-            libcups2-dev libfontconfig1-dev libunwind-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            libgtk-3-dev libkrb5-dev \
-            libxslt1-dev libxml2-dev libxml2-utils \
-            libcurl4-openssl-dev libssl-dev \
-            libnss3-dev libnspr4-dev \
-            nasm junit4 ant \
-            bison flex gperf \
-            libxrandr-dev libxrender-dev libxext-dev \
-            libx11-dev libxt-dev \
-            zip unzip wget python3-dev \
-            xsltproc epm gettext
-          # Set GCC 12 as default
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 120
-          # Verify Java version
-          echo "Java version:" && java -version
-
-      - name: 💾 Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ccache-linux-${{ github.sha }}
-          restore-keys: ccache-linux-
-
-      - name: 📥 Clone LibreOffice source
-        run: |
-          git clone --depth 1 --branch ${{ env.LIBREOFFICE_BRANCH }} \
-            https://git.libreoffice.org/core libreoffice-core || \
-          git clone --depth 1 https://git.libreoffice.org/core libreoffice-core
-
-      # TODO: Bật lại khi thêm tiếng Việt (--with-lang="vi en-US")
-      # - name: 📥 Clone translations (Vietnamese)
-      #   run: |
-      #     cd libreoffice-core
-      #     git clone --depth 1 https://git.libreoffice.org/translations
-
-      - name: 🎨 Apply VNOffice branding
-        run: |
-          cd libreoffice-core
-          chmod +x $GITHUB_WORKSPACE/scripts/apply-branding.sh
-          bash $GITHUB_WORKSPACE/scripts/apply-branding.sh
-
-      - name: ⚙️ Configure build
-        run: |
-          cd libreoffice-core
-          printf '%s\n' \
-            "--with-vendor=PHẠM VĂN THƯƠNG - info@vnoffice.org" \
-            "--with-package-version=${{ env.VNOFFICE_VERSION }}" \
-            "--with-lang=${{ env.BUILD_LANGS }}" \
-            "--enable-release-build" \
-            "--disable-online-update" \
-            "--disable-odk" \
-            "--with-package-format=deb" \
-            "--with-parallelism=$(nproc)" \
-            "--enable-ccache" \
-            "--enable-epm" \
-            "--without-doxygen" \
-            "--without-help" \
-            "--without-junit" \
-            > autogen.input
-          cat autogen.input
-          ./autogen.sh
-
-      - name: 🔨 Build VNOffice
-        run: |
-          set -o pipefail
-          cd libreoffice-core
-          make -j$(nproc) 2>&1 | tail -500
-
-      - name: 📦 Verify .deb packages
-        run: |
-          cd libreoffice-core
-          echo "=== Tìm file .deb ==="
-          find workdir/installation -name "*.deb" -type f 2>/dev/null | head -20
-          echo "=== Kiểm tra instdir ==="
-          ls -lh instdir/ 2>/dev/null | head -20
-          DEB_COUNT=$(find workdir/installation -name "*.deb" -type f 2>/dev/null | wc -l)
-          echo "Tổng số file .deb: $DEB_COUNT"
-          if [ "$DEB_COUNT" -eq 0 ]; then
-            echo "::warning::Không tìm thấy file .deb nào trong workdir/installation/"
-          fi
-
-      - name: 📤 Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vnoffice-linux-deb
-          path: |
-            libreoffice-core/workdir/installation/**/*.deb
-            libreoffice-core/instdir/**
-          retention-days: 30
-
   # =========================================================================
   # 🪟 BUILD WINDOWS (.exe / .msi)
   # =========================================================================
@@ -154,25 +39,84 @@ jobs:
       - name: 🔧 Setup Cygwin
         uses: egor-tensin/setup-cygwin@v4
         with:
-          packages: autoconf automake bison flex gcc-g++ git gnupg gperf make openssh perl pkg-config python3 wget zip unzip patch ccache gettext-devel libtool
+          packages: >-
+            autoconf automake bison flex gcc-g++ git gnupg gperf
+            make openssh perl pkg-config python3 wget zip unzip
+            patch ccache gettext-devel libtool
 
-      - name: 🔧 Export Visual Studio environment for Cygwin
+      # ---------------------------------------------------------------
+      # Bước quan trọng: Export VS environment ra file để Cygwin source
+      # Lỗi cũ: vcvars64 chạy trong cmd nhưng bash -lc tạo login shell
+      # mới => env không được kế thừa => configure không tìm thấy cl.exe
+      # ---------------------------------------------------------------
+      - name: 🔧 Detect Visual Studio and export env for Cygwin
+        id: vs-env
         shell: cmd
         run: |
           @echo off
           :: Detect VS2022 installation path
           for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
           echo Found Visual Studio at: %VS_PATH%
-          :: Call vcvars64.bat and export env vars to a file Cygwin can source
+
+          :: Call vcvars64.bat to set up MSVC environment
           call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
-          :: Write key env vars to a file
-          echo VS_PATH=%VS_PATH%> %GITHUB_ENV%
+
+          :: Export VS_PATH to GITHUB_ENV so subsequent steps can use it
+          echo VS_PATH=%VS_PATH%>> %GITHUB_ENV%
+
+          :: Find cl.exe path and export it
+          for /f "delims=" %%p in ('where cl.exe') do set CL_PATH=%%~dpp
+          echo CL_DIR=%CL_PATH%>> %GITHUB_ENV%
+
+          :: Write a Cygwin-sourceable env file with all MSVC paths
+          :: Convert Windows paths to Cygwin paths for the critical variables
+          C:\tools\cygwin\bin\bash.exe -c "cat > /tmp/vs_env.sh << 'ENVEOF'
+          # Auto-generated Visual Studio environment for Cygwin
+          export PATH=\"/cygdrive/c/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.43.34808/bin/HostX64/x64:$PATH\"
+          ENVEOF"
+
+          :: Write the actual PATH additions (with proper cl.exe location)
+          echo Detecting cl.exe location...
+          where cl.exe
+          where link.exe
+          where lib.exe
+
+          :: Create a comprehensive env script by dumping the full PATH
+          :: after vcvars64.bat has been sourced
+          echo set "VSENVPATH=%PATH%"> C:\tools\cygwin\tmp\vs_path.bat
+          echo %PATH%> C:\tools\cygwin\tmp\vs_path.txt
+          echo %INCLUDE%> C:\tools\cygwin\tmp\vs_include.txt
+          echo %LIB%> C:\tools\cygwin\tmp\vs_lib.txt
+
+          :: Export key variables to GITHUB_ENV
           echo INCLUDE=%INCLUDE%>> %GITHUB_ENV%
           echo LIB=%LIB%>> %GITHUB_ENV%
           echo LIBPATH=%LIBPATH%>> %GITHUB_ENV%
-          :: Also add cl.exe to PATH
-          for /f "delims=" %%p in ('where cl.exe') do set CL_DIR=%%~dpp
-          echo CL_DIR=%CL_DIR%>> %GITHUB_ENV%
+
+      - name: 🔧 Create Cygwin VS environment script
+        shell: cmd
+        run: |
+          @echo off
+          :: Re-init VS environment
+          for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+
+          :: Write a bash script that Cygwin can source
+          :: This converts the Windows PATH to Cygwin format
+          C:\tools\cygwin\bin\bash.exe -c "echo '#!/bin/bash' > /tmp/setup_vs.sh && echo '# Visual Studio environment for LibreOffice build' >> /tmp/setup_vs.sh"
+
+          :: Export the full Windows PATH (after vcvars) into the script
+          :: We use cygpath to convert it
+          C:\tools\cygwin\bin\bash.exe -c "echo 'export WIN_PATH=\"%PATH%\"' | sed 's/\\\\/\//g' >> /tmp/setup_vs.sh"
+          C:\tools\cygwin\bin\bash.exe -c "echo 'export INCLUDE=\"%INCLUDE%\"' | sed 's/\\\\/\//g' >> /tmp/setup_vs.sh"
+          C:\tools\cygwin\bin\bash.exe -c "echo 'export LIB=\"%LIB%\"' | sed 's/\\\\/\//g' >> /tmp/setup_vs.sh"
+          C:\tools\cygwin\bin\bash.exe -c "echo 'export LIBPATH=\"%LIBPATH%\"' | sed 's/\\\\/\//g' >> /tmp/setup_vs.sh"
+
+          :: Convert PATH entries to Cygwin format
+          C:\tools\cygwin\bin\bash.exe -c "echo '' >> /tmp/setup_vs.sh && echo '# Convert Windows PATH to Cygwin PATH' >> /tmp/setup_vs.sh && echo 'IFS=\";\" read -ra DIRS <<< \"$WIN_PATH\"' >> /tmp/setup_vs.sh && echo 'CYPATH=\"\"' >> /tmp/setup_vs.sh && echo 'for d in \"${DIRS[@]}\"; do' >> /tmp/setup_vs.sh && echo '  CP=$(cygpath -u \"$d\" 2>/dev/null) && CYPATH=\"$CYPATH:$CP\"' >> /tmp/setup_vs.sh && echo 'done' >> /tmp/setup_vs.sh && echo 'export PATH=\"${CYPATH#:}:$PATH\"' >> /tmp/setup_vs.sh"
+
+          :: Verify the script
+          C:\tools\cygwin\bin\bash.exe -c "echo '=== VS env script ===' && cat /tmp/setup_vs.sh"
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
@@ -186,12 +130,6 @@ jobs:
         run: |
           C:\tools\cygwin\bin\bash.exe -lc "cd ~ && git clone --depth 1 --branch libreoffice-25-2 https://git.libreoffice.org/core libreoffice-core || git clone --depth 1 https://git.libreoffice.org/core libreoffice-core"
 
-      # TODO: Bật lại khi thêm tiếng Việt (--with-lang="vi en-US")
-      # - name: 📥 Clone translations (Vietnamese)
-      #   shell: cmd
-      #   run: |
-      #     C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && git clone --depth 1 https://git.libreoffice.org/translations"
-
       - name: 🎨 Apply VNOffice branding
         shell: cmd
         run: |
@@ -200,15 +138,40 @@ jobs:
           xcopy "%GITHUB_WORKSPACE%\templates" "C:\tools\cygwin\home\runneradmin\templates\" /E /I /Y >nul 2>&1
           C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && export VNOFFICE_VERSION='${{ env.VNOFFICE_VERSION }}' && sed -i 's/\r$//' ~/vnoffice-scripts/*.sh && bash ~/vnoffice-scripts/apply-branding.sh"
 
+      # ---------------------------------------------------------------
+      # Configure: Phải source VS env TRƯỚC khi gọi autogen.sh
+      # Dùng --with-visual-studio chỉ đường dẫn VS installation
+      # ---------------------------------------------------------------
       - name: ⚙️ Configure
         shell: cmd
         run: |
           @echo off
-          :: Re-initialize VS environment in this step
+          :: Re-initialize VS environment
           for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
           call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
-          :: Run configure inside Cygwin with VS env inherited
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && { echo '--with-vendor=PHAM VAN THUONG - info@vnoffice.org'; echo '--with-package-version=${{ env.VNOFFICE_VERSION }}'; echo '--with-lang=${{ env.BUILD_LANGS }}'; echo '--enable-release-build'; echo '--disable-online-update'; echo '--disable-odk'; echo '--without-doxygen'; echo '--without-help'; echo '--without-junit'; echo '--with-package-format=msi'; echo '--enable-epm'; echo '--enable-ccache'; } > autogen.input && cat autogen.input && ./autogen.sh"
+
+          :: Now run configure — the key fix is passing --with-visual-studio
+          :: and ensuring cl.exe is on the PATH inside Cygwin
+          C:\tools\cygwin\bin\bash.exe -lc ^
+            "source /tmp/setup_vs.sh 2>/dev/null; ^
+             cd ~/libreoffice-core && ^
+             { echo '--with-vendor=PHAM VAN THUONG - info@vnoffice.org'; ^
+               echo '--with-package-version=${{ env.VNOFFICE_VERSION }}'; ^
+               echo '--with-lang=${{ env.BUILD_LANGS }}'; ^
+               echo '--enable-release-build'; ^
+               echo '--disable-online-update'; ^
+               echo '--disable-odk'; ^
+               echo '--without-doxygen'; ^
+               echo '--without-help'; ^
+               echo '--without-junit'; ^
+               echo '--without-java'; ^
+               echo '--with-package-format=msi'; ^
+               echo '--enable-ccache'; ^
+             } > autogen.input && ^
+             cat autogen.input && ^
+             echo '=== Verifying cl.exe ===' && ^
+             which cl.exe 2>/dev/null || which cl 2>/dev/null || echo 'WARNING: cl.exe not found in PATH' && ^
+             ./autogen.sh"
 
       - name: 🔨 Build VNOffice
         shell: cmd
@@ -216,7 +179,7 @@ jobs:
           @echo off
           for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
           call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && make 2>&1 | tail -500"
+          C:\tools\cygwin\bin\bash.exe -lc "source /tmp/setup_vs.sh 2>/dev/null; cd ~/libreoffice-core && make 2>&1 | tail -500"
 
       - name: 📦 Verify Windows packages
         shell: cmd
@@ -245,11 +208,30 @@ jobs:
       - name: 📥 Checkout VNOffice config
         uses: actions/checkout@v4
 
-      - name: ☕ Setup Java 21 LTS
+      # ---------------------------------------------------------------
+      # Fix: Dùng Java 17 LTS thay vì 21
+      # Java 25 (mặc định trên macos-14 runner 2026) đã remove
+      # Security Manager hoàn toàn => hsqldb build lỗi fatal.
+      # Java 17 LTS là phiên bản ổn định nhất cho LibreOffice build.
+      # ---------------------------------------------------------------
+      - name: ☕ Setup Java 17 LTS
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
+
+      - name: ☕ Verify Java version
+        run: |
+          echo "=== Java version ==="
+          java -version
+          echo "=== JAVA_HOME ==="
+          echo $JAVA_HOME
+          # Đảm bảo đúng Java 17, không phải 25+
+          JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed 's/.*"\([0-9]*\)\..*/\1/')
+          echo "Java major version: $JAVA_MAJOR"
+          if [ "$JAVA_MAJOR" -gt "21" ]; then
+            echo "::warning::Java version $JAVA_MAJOR detected. hsqldb may fail with Security Manager errors."
+          fi
 
       - name: 🔧 Install dependencies
         run: |
@@ -259,8 +241,8 @@ jobs:
             gettext gperf nasm ant make
           # Add GNU make to PATH (brew installs as gmake, we need 'make' >= 4.0)
           echo "$(brew --prefix)/opt/make/libexec/gnubin" >> $GITHUB_PATH
-          # Verify Java version
-          echo "Java version:" && java -version
+          # Verify
+          echo "GNU Make version:" && make --version | head -1
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
@@ -275,12 +257,6 @@ jobs:
             https://git.libreoffice.org/core libreoffice-core || \
           git clone --depth 1 https://git.libreoffice.org/core libreoffice-core
 
-      # TODO: Bật lại khi thêm tiếng Việt (--with-lang="vi en-US")
-      # - name: 📥 Clone translations (Vietnamese)
-      #   run: |
-      #     cd libreoffice-core
-      #     git clone --depth 1 https://git.libreoffice.org/translations
-
       - name: 🎨 Apply VNOffice branding
         run: |
           cd libreoffice-core
@@ -288,6 +264,10 @@ jobs:
           export VNOFFICE_VERSION="${{ env.VNOFFICE_VERSION }}"
           bash $GITHUB_WORKSPACE/scripts/apply-branding.sh
 
+      # ---------------------------------------------------------------
+      # Configure: Thêm các flag tắt scripting beanshell/javascript
+      # để tránh lỗi hsqldb + Security Manager trên Java mới
+      # ---------------------------------------------------------------
       - name: ⚙️ Configure build
         run: |
           cd libreoffice-core
@@ -301,8 +281,12 @@ jobs:
             "--without-doxygen" \
             "--without-help" \
             "--without-junit" \
+            "--with-jdk-home=$JAVA_HOME" \
             "--enable-ccache" \
+            "--disable-scripting-beanshell" \
+            "--disable-scripting-javascript" \
             > autogen.input
+          echo "=== autogen.input ==="
           cat autogen.input
           ./autogen.sh
 
@@ -361,7 +345,7 @@ jobs:
   # =========================================================================
   release:
     name: 🚀 Create GitHub Release
-    needs: [build-linux, build-windows, build-macos]
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -385,7 +369,6 @@ jobs:
             |---|---|
             | 🪟 Windows | VNOffice-Setup.msi |
             | 🍎 macOS | VNOffice.dmg |
-            | 🐧 Linux | vnoffice.deb |
 
             ## ✨ Tính năng
             - 📝 **VNOffice Writer** — Soạn thảo văn bản (thay Word)
