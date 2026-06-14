@@ -89,11 +89,16 @@ jobs:
           :: ============================================================
           echo === Writing VS env to ~/.bash_profile ===
 
-          :: Chuyển Windows path sang Cygwin path cho CL_DIR
+          :: Chuyển Windows path sang Cygwin path cho CL_DIR và VS_PATH
           for /f "delims=" %%c in ('C:\tools\cygwin\bin\cygpath.exe -u "%CL_DIR%"') do set CL_CYG=%%c
+          for /f "delims=" %%v in ('C:\tools\cygwin\bin\cygpath.exe -u "%VS_PATH%"') do set VS_CYG=%%v
+          for /f "delims=" %%w in ('C:\tools\cygwin\bin\cygpath.exe -u "%VS_PATH%\VC"') do set VC_CYG=%%w
           echo cl.exe cygpath: %CL_CYG%
+          echo VS cygpath: %VS_CYG%
 
           :: Ghi tất cả vào 1 file tạm trước, rồi append vào bash_profile
+          :: QUAN TRỌNG: LibreOffice configure cần VSINSTALLDIR + VCINSTALLDIR
+          :: không chỉ PATH. Nếu thiếu sẽ báo "no Visual Studio installation found"
           (
             echo.
             echo # === Visual Studio environment ^(auto-generated^) ===
@@ -101,6 +106,10 @@ jobs:
             echo export INCLUDE="%INCLUDE%"
             echo export LIB="%LIB%"
             echo export LIBPATH="%LIBPATH%"
+            echo export VSINSTALLDIR="%VS_PATH%\\"
+            echo export VCINSTALLDIR="%VS_PATH%\VC\\"
+            echo export WindowsSdkDir="%WindowsSdkDir%"
+            echo export WindowsSdkVerBinPath="%WindowsSdkVerBinPath%"
             echo # === End VS environment ===
           ) > C:\tools\cygwin\tmp\vs_env.sh
 
@@ -138,7 +147,7 @@ jobs:
       - name: ⚙️ Configure
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && echo '--with-vendor=PHAM VAN THUONG - info@vnoffice.org' > autogen.input && echo '--with-package-version=1.0.0' >> autogen.input && echo '--with-lang=en-US' >> autogen.input && echo '--enable-release-build' >> autogen.input && echo '--disable-online-update' >> autogen.input && echo '--disable-odk' >> autogen.input && echo '--without-doxygen' >> autogen.input && echo '--without-help' >> autogen.input && echo '--without-junit' >> autogen.input && echo '--without-java' >> autogen.input && echo '--with-package-format=msi' >> autogen.input && echo '--enable-ccache' >> autogen.input && echo '=== autogen.input ===' && cat autogen.input && echo '=== Verifying cl.exe ===' && which cl.exe 2>/dev/null && echo 'cl.exe OK' || echo 'ERROR: cl.exe not found' && ./autogen.sh"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf '%%s\n' '--with-vendor=PHAM VAN THUONG - info@vnoffice.org' '--with-package-version=1.0.0' '--with-lang=en-US' '--enable-release-build' '--disable-online-update' '--disable-odk' '--without-doxygen' '--without-help' '--without-junit' '--without-java' '--with-package-format=msi' '--enable-ccache' '--with-visual-studio=2022' > autogen.input && echo '=== autogen.input ===' && cat autogen.input && echo '=== Verifying VS env ===' && echo VSINSTALLDIR=$VSINSTALLDIR && echo VCINSTALLDIR=$VCINSTALLDIR && which cl.exe && echo 'cl.exe OK' && ./autogen.sh"
 
       - name: 🔨 Build VNOffice
         shell: cmd
