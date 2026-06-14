@@ -177,12 +177,12 @@ jobs:
       - name: ⚙️ Configure
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf '%%s\n' '--with-vendor=PHAM VAN THUONG - info@vnoffice.org' '--with-package-version=${{ env.VNOFFICE_VERSION }}' '--with-lang=${{ env.BUILD_LANGS }}' '--enable-release-build' '--disable-online-update' '--disable-odk' '--without-doxygen' '--without-help' '--without-junit' '--with-package-format=msi' '--enable-epm' '--enable-ccache' > autogen.input && cat autogen.input && ./autogen.sh"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && { echo '--with-vendor=PHAM VAN THUONG - info@vnoffice.org'; echo '--with-package-version=${{ env.VNOFFICE_VERSION }}'; echo '--with-lang=${{ env.BUILD_LANGS }}'; echo '--enable-release-build'; echo '--disable-online-update'; echo '--disable-odk'; echo '--without-doxygen'; echo '--without-help'; echo '--without-junit'; echo '--with-package-format=msi'; echo '--enable-epm'; echo '--enable-ccache'; } > autogen.input && cat autogen.input && ./autogen.sh"
 
       - name: 🔨 Build VNOffice
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && set -o pipefail && make 2>&1 | tail -500"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && make 2>&1 | tail -500"
 
       - name: 📦 Verify Windows packages
         shell: cmd
