@@ -21,6 +21,8 @@ env:
   VNOFFICE_EMAIL: "info@vnoffice.org"
   LIBREOFFICE_BRANCH: "libreoffice-25-2"
   BUILD_LANGS: "en-US"
+  # Fix: Node.js 20 deprecated on GitHub Actions starting June 16, 2026
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # =========================================================================
@@ -44,37 +46,41 @@ jobs:
             patch ccache gettext-devel libtool nasm
 
       # ---------------------------------------------------------------
-      # Inject VS paths vào Cygwin ~/.bash_profile
-      # Cách hoạt động:
-      #   1. cmd gọi vcvars64.bat → lấy đường dẫn cl.exe, INCLUDE, LIB
-      #   2. Dùng cygpath chuyển Windows paths → Cygwin paths
-      #   3. Ghi vào ~/.bash_profile → mọi bash --login -c đều có VS env
+      # BƯỚC QUAN TRỌNG: Khởi tạo Cygwin home directory TRƯỚC
+      # Khi Cygwin mới cài, bash --login lần đầu copy skeleton files
+      # (bao gồm .bash_profile). Nếu inject VS env trước bước này,
+      # skeleton sẽ GHI ĐÈ mất .bash_profile → mất VS env.
       #
-      # Đây là cách đáng tin cậy nhất vì --login luôn source ~/.bash_profile
+      # Giải pháp: Ghi VS env vào /etc/profile.d/vs_env.sh
+      # → File này được source tự động bởi /etc/profile khi bash --login
+      # → KHÔNG bị ảnh hưởng bởi skeleton copy
       # ---------------------------------------------------------------
-      - name: 🔧 Inject VS environment into Cygwin bash_profile
+      - name: 🔧 Initialize Cygwin home directory
+        shell: cmd
+        run: |
+          @echo off
+          echo === Initializing Cygwin home directory ===
+          C:\tools\cygwin\bin\bash.exe --login -c "whoami && echo HOME=$HOME && ls -la ~/"
+          echo === Home directory initialized ===
+
+      - name: 🔧 Inject VS environment into Cygwin
         shell: cmd
         run: |
           @echo off
 
           :: ============================================================
-          :: BƯỚC 0: Khởi tạo Cygwin home directory
-          :: Khi Cygwin mới cài, /home/runneradmin/ chưa tồn tại.
-          :: bash --login lần đầu sẽ tạo home dir + default dotfiles.
-          :: ============================================================
-          echo === Initializing Cygwin home directory ===
-          C:\tools\cygwin\bin\bash.exe --login -c "whoami && echo HOME=$HOME && ls -la ~/"
-          C:\tools\cygwin\bin\bash.exe --login -c "touch ~/.bash_profile && echo '.bash_profile ready'"
-
-          :: ============================================================
           :: BƯỚC 1: Tìm Visual Studio và lấy env vars
           :: ============================================================
           for /f "usebackq delims=" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS_PATH=%%i
+          if "%VS_PATH%"=="" (
+            echo ::error::Visual Studio not found by vswhere.exe!
+            exit /b 1
+          )
           echo Found Visual Studio at: %VS_PATH%
           call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
 
           echo === Verifying MSVC tools in cmd ===
-          where cl.exe
+          where cl.exe || (echo ::error::cl.exe not found after vcvars64! && exit /b 1)
           where lib.exe
           where link.exe
 
@@ -84,45 +90,72 @@ jobs:
           echo cl.exe directory: %CL_DIR%
 
           :: ============================================================
-          :: BƯỚC 2: Ghi VS env vào ~/.bash_profile bằng cách an toàn
-          :: Dùng heredoc thay vì nhiều lần gọi bash riêng lẻ
+          :: BƯỚC 2: Ghi VS env vào /etc/profile.d/vs_env.sh
+          :: File trong /etc/profile.d/ được source tự động bởi
+          :: /etc/profile khi bash --login → KHÔNG bị skeleton ghi đè
+          ::
+          :: QUAN TRỌNG: Không dùng echo export VAR="value" trực tiếp
+          :: vì path chứa dấu () (ví dụ: "Program Files (x86)")
+          :: sẽ bị cmd.exe hoặc bash parse lỗi.
+          :: Giải pháp: Ghi raw key=value vào file tạm, rồi dùng
+          :: Cygwin bash để convert sang single-quoted exports.
           :: ============================================================
-          echo === Writing VS env to ~/.bash_profile ===
+          echo === Writing VS env to /etc/profile.d/ ===
 
-          :: Chuyển Windows path sang Cygwin path cho CL_DIR và VS_PATH
+          :: Chuyển Windows path sang Cygwin path cho cl.exe directory
           for /f "delims=" %%c in ('C:\tools\cygwin\bin\cygpath.exe -u "%CL_DIR%"') do set CL_CYG=%%c
-          for /f "delims=" %%v in ('C:\tools\cygwin\bin\cygpath.exe -u "%VS_PATH%"') do set VS_CYG=%%v
-          for /f "delims=" %%w in ('C:\tools\cygwin\bin\cygpath.exe -u "%VS_PATH%\VC"') do set VC_CYG=%%w
           echo cl.exe cygpath: %CL_CYG%
-          echo VS cygpath: %VS_CYG%
 
-          :: Ghi VS env vào file tạm
-          :: QUAN TRỌNG: Dùng cmd echo trực tiếp vào Cygwin path
-          :: Escape ^( và ^) cho paths chứa "Program Files (x86)"
-          set VS_ENV_FILE=C:\tools\cygwin\tmp\vs_env.sh
-          echo # === Visual Studio environment === > "%VS_ENV_FILE%"
-          echo export PATH="%CL_CYG%:$PATH" >> "%VS_ENV_FILE%"
-          echo export INCLUDE="%INCLUDE%" >> "%VS_ENV_FILE%"
-          echo export LIB="%LIB%" >> "%VS_ENV_FILE%"
-          echo export LIBPATH="%LIBPATH%" >> "%VS_ENV_FILE%"
-          echo export VSINSTALLDIR="%VS_PATH%\" >> "%VS_ENV_FILE%"
-          echo export VCINSTALLDIR="%VS_PATH%\VC\" >> "%VS_ENV_FILE%"
-          echo export WindowsSdkDir="%WindowsSdkDir%" >> "%VS_ENV_FILE%"
-          echo export WindowsSdkVerBinPath="%WindowsSdkVerBinPath%" >> "%VS_ENV_FILE%"
-          echo # === End VS environment === >> "%VS_ENV_FILE%"
+          :: Ghi raw key=value pairs vào file tạm (KHÔNG dùng export/quotes)
+          set RAW_FILE=C:\tools\cygwin\tmp\vs_env_raw.txt
+          > "%RAW_FILE%" echo CL_CYG_PATH=%CL_CYG%
+          >> "%RAW_FILE%" echo INCLUDE=%INCLUDE%
+          >> "%RAW_FILE%" echo LIB=%LIB%
+          >> "%RAW_FILE%" echo LIBPATH=%LIBPATH%
+          >> "%RAW_FILE%" echo VSINSTALLDIR=%VS_PATH%\
+          >> "%RAW_FILE%" echo VCINSTALLDIR=%VS_PATH%\VC\
+          >> "%RAW_FILE%" echo VCToolsInstallDir=%VCToolsInstallDir%
+          >> "%RAW_FILE%" echo WindowsSdkDir=%WindowsSdkDir%
+          >> "%RAW_FILE%" echo WindowsSdkVerBinPath=%WindowsSdkVerBinPath%
+          >> "%RAW_FILE%" echo UCRTVersion=%UCRTVersion%
 
-          :: Fix line endings + wrap values in single quotes + append to bash_profile
-          :: Dùng Python script từ repo (tránh escaping hell)
-          copy "%GITHUB_WORKSPACE%\scripts\fix_vs_env.py" "C:\tools\cygwin\tmp\fix_vs_env.py"
-          C:\tools\cygwin\bin\bash.exe --login -c "python3 /tmp/fix_vs_env.py"
+          :: Dùng Cygwin bash để convert raw file → safe single-quoted exports
+          C:\tools\cygwin\bin\bash.exe --login -c "
+            set -e
+            RAW=/tmp/vs_env_raw.txt
+            OUT=/etc/profile.d/vs_env.sh
+            # Fix CRLF
+            sed -i 's/\r$//' \"$RAW\"
+            echo '# === Visual Studio environment for LibreOffice build ===' > \"$OUT\"
+            while IFS='=' read -r key val; do
+              [ -z \"$key\" ] && continue
+              if [ \"$key\" = 'CL_CYG_PATH' ]; then
+                # PATH needs double-quote so \$PATH is expanded at runtime
+                echo \"export PATH=\\\"$val:\\\$PATH\\\"\" >> \"$OUT\"
+              else
+                # Single-quote all other values to prevent () interpretation
+                echo \"export $key='$val'\" >> \"$OUT\"
+              fi
+            done < \"$RAW\"
+            echo '# === End VS environment ===' >> \"$OUT\"
+            echo '=== /etc/profile.d/vs_env.sh ==='
+            cat \"$OUT\"
+          "
 
-          echo === bash_profile contents ===
-          C:\tools\cygwin\bin\bash.exe --login -c "cat ~/.bash_profile"
-
-      - name: 🔧 Verify cl.exe available in Cygwin login shell
+      - name: 🔧 Verify VS environment in Cygwin shell
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe --login -c "echo '=== Checking cl.exe ===' && which cl.exe && echo 'OK: cl.exe found' || (echo 'ERROR: cl.exe NOT in PATH' && echo 'PATH entries:' && echo $PATH | tr ':' '\n' | head -20 && exit 1)"
+          C:\tools\cygwin\bin\bash.exe --login -c "
+            echo '=== Checking cl.exe ==='
+            which cl.exe && echo 'OK: cl.exe found' || { echo 'ERROR: cl.exe NOT in PATH'; echo \$PATH | tr ':' '\n' | head -20; exit 1; }
+            echo '=== VS env vars ==='
+            echo \"VSINSTALLDIR=\$VSINSTALLDIR\"
+            echo \"VCINSTALLDIR=\$VCINSTALLDIR\"
+            echo \"VCToolsInstallDir=\$VCToolsInstallDir\"
+            echo \"WindowsSdkDir=\$WindowsSdkDir\"
+            echo '=== cl.exe version ==='
+            cl.exe 2>&1 | head -3
+          "
 
       - name: 💾 Cache ccache
         uses: actions/cache@v4
@@ -147,12 +180,12 @@ jobs:
       - name: ⚙️ Configure
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf '%%s\n' '--with-vendor=PHAM VAN THUONG - info@vnoffice.org' '--with-package-version=1.0.0' '--with-lang=en-US' '--enable-release-build' '--disable-online-update' '--disable-odk' '--without-doxygen' '--without-help' '--without-junit' '--without-java' '--with-package-format=msi' '--enable-ccache' '--with-visual-studio=2022' > autogen.input && echo '=== autogen.input ===' && cat autogen.input && echo '=== Verifying VS env ===' && echo VSINSTALLDIR=$VSINSTALLDIR && echo VCINSTALLDIR=$VCINSTALLDIR && which cl.exe && echo 'cl.exe OK' && ./autogen.sh"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && printf '%%s\n' '--with-vendor=PHAM VAN THUONG - info@vnoffice.org' '--with-package-version=1.0.0' '--with-lang=en-US' '--enable-release-build' '--disable-online-update' '--disable-odk' '--without-doxygen' '--without-help' '--without-junit' '--without-java' '--with-package-format=msi' '--enable-ccache' '--with-visual-studio=2022' > autogen.input && echo '=== autogen.input ===' && cat autogen.input && echo '=== Verifying VS env before configure ===' && echo VSINSTALLDIR=\$VSINSTALLDIR && echo VCINSTALLDIR=\$VCINSTALLDIR && echo VCToolsInstallDir=\$VCToolsInstallDir && which cl.exe && cl.exe 2>&1 | head -2 && echo '=== Running autogen.sh ===' && ./autogen.sh"
 
       - name: 🔨 Build VNOffice
         shell: cmd
         run: |
-          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && make 2>&1 | tail -500"
+          C:\tools\cygwin\bin\bash.exe -lc "cd ~/libreoffice-core && make -j$(nproc) 2>&1 | tail -500"
 
       - name: 📦 Verify Windows packages
         shell: cmd
@@ -168,6 +201,7 @@ jobs:
             C:\tools\cygwin\home\runneradmin\libreoffice-core\workdir\installation\**\*.exe
             C:\tools\cygwin\home\runneradmin\libreoffice-core\instdir\**
           retention-days: 30
+
 
   # =========================================================================
   # 🍎 BUILD macOS (.dmg)
@@ -329,6 +363,7 @@ jobs:
             | Hệ điều hành | File |
             |---|---|
             | 🪟 Windows | VNOffice-Setup.msi |
+            | 🐧 Linux | VNOffice.deb |
             | 🍎 macOS | VNOffice.dmg |
 
             ## ✨ Tính năng
